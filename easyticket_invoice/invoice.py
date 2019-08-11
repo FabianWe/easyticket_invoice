@@ -22,7 +22,6 @@ Also includes an implementation based on WeasyPrint and Django templates.
 
 from decimal import Decimal
 from collections import defaultdict
-from weasyprint import HTML
 from abc import ABC, abstractmethod
 
 
