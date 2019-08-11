@@ -217,14 +217,22 @@ class PDFGenException(Exception):
 class InvoiceRenderer(ABC):
     """Abstract base class for everything that generateds a pdf for a given invoice.
 
+    An InvoiceRenderer is not re-usable, meaning you don't just create one renderer once and then call render multiple
+    times. Instead create one renderer and then once call the render method.
+    This is due to the fact that subclasses may night problem-specific values in each run (dynamic content etc.).
+
     Attributes:
-        show_single_articles (bool):
-        show_net (bool):
-        show_gross (bool):
-        show_net_sum (bool):
-        show_gross_sum (bool):
+        show_single_articles (bool): List all single articles in the invoice, for example if an item is bought 5 times
+            don't just print that the item has been bought 5 times but instead list each instance individually.
+        show_net (bool): Show the net price of each article.
+        show_gross (bool): Show the gross price of each article.
+        show_net_sum (bool): Show the net sum of all articles.
+        show_gross_sum (bool): Show the gross sum of all articles.
+        taxes_from_single (bool): Compute the taxes by summing up the taxes of all articles if True, otherwise
+            compute the taxes for the complete bill.
     """
-    def __init__(self, show_single_articles=False, show_net=True, show_gross=True, show_net_sum=True, show_gross_sum=True):
+    def __init__(self, show_single_articles=False, show_net=True, show_gross=True, show_net_sum=True,
+                 show_gross_sum=True, taxes_from_single=True):
         super().__init__()
         self.show_single_articles = show_single_articles
         self.show_net = show_net
@@ -233,5 +241,18 @@ class InvoiceRenderer(ABC):
         self.show_gross_sum = show_gross_sum
 
     @abstractmethod
-    def render(self, invoice, filepath=None):
+    def render(self, invoice, filepath):
+        """Render the invoice to the pdf file.
+
+        The filepath specifies where to write the pdf, if a string is given output is written to a file with that
+        path.
+        Otherwise it must be something to write the bytes into, for example io.BytesIO.
+
+        Args:
+            invoice (Invoice): Information about the invoice to render.
+            filepath (file or str): File-like object with a write method to write the bytes of the pdf or a file path.
+
+        Raises:
+            PDFGenException: If something went wrong while creating the pdf.
+        """
         pass

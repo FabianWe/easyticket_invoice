@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .invoice import InvoiceRenderer
+from .invoice import InvoiceRenderer, PDFGenException
 from weasyprint import default_url_fetcher, HTML
 
 
@@ -179,13 +179,17 @@ class WeasyRenderer(InvoiceRenderer):
         html_args['url_fetcher'] = self.fetch_url
         return html_args
 
-    def render(self, invoice, filepath=None):
-        # create html args and weasyprint html
-        html_args = self.__prepare_html_args()
-        weasy_html = HTML(**html_args)
-        pdf_args = self.__prepare_pdf_args(filepath)
-        print(pdf_args)
-        weasy_html.write_pdf(**pdf_args)
+    def render(self, invoice, filepath):
+        # not so nice: we catch *all* exceptions here, it is not nicely documented what kind of exceptions may occur
+        # in weasyprint
+        try:
+            # create html args and weasyprint html
+            html_args = self.__prepare_html_args()
+            weasy_html = HTML(**html_args)
+            pdf_args = self.__prepare_pdf_args(filepath)
+            weasy_html.write_pdf(**pdf_args)
+        except Exception as e:
+            raise PDFGenException('WeasyPrint error') from e
 
     def fetch_url(self, url):
         """A WeasyPrint URL fetcher.
@@ -218,7 +222,3 @@ class WeasyRenderer(InvoiceRenderer):
             return default_url_fetcher(url, **self.fetcher_args)
         else:
             raise ValueError('Invalid url: "%s"' % url)
-
-t = '<h1>Hello</h1>'
-r = WeasyRenderer(string=t)
-r.render(None, 'test.pdf')
