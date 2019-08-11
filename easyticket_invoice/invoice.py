@@ -22,6 +22,8 @@ Also includes an implementation based on WeasyPrint and Django templates.
 
 from decimal import Decimal
 from collections import defaultdict
+from weasyprint import HTML
+from abc import ABC, abstractmethod
 
 
 class Article(object):
@@ -199,3 +201,45 @@ class Invoice(object):
         if article.tax_category not in self.tax_categories:
             raise KeyError('Tax category "%s" is not registered in this invoice' % str(article.tax_category))
         self.articles[article.article_id].append(article)
+
+    def get_context(self):
+        ctx = {'articles': self.articles, 'tax_categories': self.tax_categories, 'issuer': self.issuer,
+               'recipient': self.recipient, 'date': self.date, 'service_date': self.service_date,
+               'payment_information': self.payment_information}
+        return ctx
+
+
+class PDFGenException(Exception):
+    """Exception raised if an error occurred while generating a pdf.
+    """
+    pass
+
+
+class InvoiceRenderer(ABC):
+    """Abstract base class for everything that generateds a pdf for a given invoice.
+
+    Attributes:
+        show_single_articles (bool):
+        show_net (bool):
+        show_gross (bool):
+        show_net_sum (bool):
+        show_gross_sum (bool):
+    """
+    def __init__(self, show_single_articles=False, show_net=True, show_gross=True, show_net_sum=True, show_gross_sum=True):
+        super().__init__()
+        self.show_single_articles = show_single_articles
+        self.show_net = show_net
+        self.show_gross = show_gross
+        self.show_net_sum = show_net_sum
+        self.show_gross_sum = show_gross_sum
+
+    @abstractmethod
+    def render(self, filepath=None):
+        pass
+
+
+t = '<h1>Hello World</h1>' \
+    'Hello you fool!'
+
+html = HTML(string=t)
+print(html.write_pdf('ticket_invoice.pdf'))
