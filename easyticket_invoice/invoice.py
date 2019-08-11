@@ -234,12 +234,5 @@ class InvoiceRenderer(ABC):
         self.show_gross_sum = show_gross_sum
 
     @abstractmethod
-    def render(self, invoice, filepath=None, **kwargs):
+    def render(self, invoice, filepath=None):
         pass
-
-
-t = '<h1>Hello World</h1>' \
-    'Hello you fool!'
-
-html = HTML(string=t)
-print(html.write_pdf('ticket_invoice.pdf'))

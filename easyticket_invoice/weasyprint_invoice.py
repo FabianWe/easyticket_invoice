@@ -16,7 +16,7 @@
 # limitations under the License.
 
 from .invoice import InvoiceRenderer
-from weasyprint import default_url_fetcher
+from weasyprint import default_url_fetcher, HTML
 
 
 class WeasyRenderer(InvoiceRenderer):
@@ -68,6 +68,10 @@ class WeasyRenderer(InvoiceRenderer):
     the resources dict, allow_files and fallback_default will be ignored, just change the url_fetcher to a URL fetcher
     method.
 
+    The constructor must contain exactly one of the following arguments as well: "filename" (str or pathlib.Path),
+    filename to the HTML file. "url" (str) An absolute, fully qualified URL. "file_obj" (file object) Any object with a
+    read method. "string" (str) A string of HTML source.
+
     Attributes:
         resources (dict): Maps strings (resource identifiers) to a dict as defined in the WeasyPrint URL fetcher
             documentation or a callable taking one argument and returning such a dict.
@@ -76,9 +80,64 @@ class WeasyRenderer(InvoiceRenderer):
         url_fetcher (function): A URL fetcher function as defined in the WeasyPrint docs, if it is not None this
             will be used in fetch_url instead of the default behavior, thus all arguments discussed above will be
             ignored.
+        html_args (dict): Additional arguments passed to the HTML method of WeasyPrint, see
+            https://weasyprint.readthedocs.io/en/latest/api.html#weasyprint.HTML (but not url_fetcher, filename etc.).
+        fetcher_args (dict): Additional arguments for the default URL fetcher, see
+            https://weasyprint.readthedocs.io/en/latest/api.html#weasyprint.default_url_fetcher
+        pdf_args (dict): Additional arguments for the write_pdf method, see
+            https://weasyprint.readthedocs.io/en/latest/api.html#weasyprint.document.Document.write_pdf
+            (but not target).
+
+    Args:
+        resources (dict): Maps strings (resource identifiers) to a dict as defined in the WeasyPrint URL fetcher
+            documentation or a callable taking one argument and returning such a dict.
+        allow_files (bool): If True local files can be accessed via "file://".
+        fallback_default (bool): Use the default URL fetcher for everything not starting with "resource:".
+        url_fetcher (function): A URL fetcher function as defined in the WeasyPrint docs, if it is not None this
+            will be used in fetch_url instead of the default behavior, thus all arguments discussed above will be
+            ignored.
+
+    Raises:
+        ValueError: If not exactly one of "filename", "url", "file_obj" or "string" is given.
     """
 
-    def __init__(self, resources=None, allow_files=False, fallback_default=False, url_fetcher=None):
+    def __init__(self, resources=None, allow_files=False, fallback_default=False, url_fetcher=None,
+                 html_args=None, fetcher_args=None, pdf_args=None, **kwargs):
+        # check for filename, url, file_obj or string (exactly one must be in kwargs)
+        count = 0
+        self.filename = None
+        self.url = None
+        self.file_obj = None
+        self.string = None
+        if 'filename' in kwargs:
+            self.filename = kwargs.pop('filename')
+            count += 1
+        if 'url' in kwargs:
+            self.url = kwargs.pop('url')
+            count += 1
+        if 'file_obj' in kwargs:
+            self.file_obj = kwargs.pop('file_obj')
+            count += 1
+        if 'string' in kwargs:
+            self.string = kwargs.pop('string')
+            count += 1
+        # now check if exactly one is given
+        if count == 0:
+            raise ValueError('Either "filename", "url", "file_obj" or "string" must be given')
+        elif count > 1:
+            raise ValueError('Only one of "filename", "url", "file_obj" or "string" is allowed')
+        # store additional html args
+        if html_args is None:
+            html_args = dict()
+        self.html_args = html_args
+        # store fetcher arguments
+        if fetcher_args is None:
+            fetcher_args = dict()
+        self.fetcher_args = fetcher_args
+        # store pdf args
+        if pdf_args is None:
+            pdf_args = dict()
+        self.pdf_args = pdf_args
         if resources is None:
             resources = dict()
         self.resources = resources
@@ -86,8 +145,46 @@ class WeasyRenderer(InvoiceRenderer):
         self.fallback_default = fallback_default
         self.url_fetcher = url_fetcher
 
-    def render(self, filepath=None, **kwargs):
-        pass
+    def __prepare_pdf_args(self):
+        pdf_args = self.pdf_args.copy()
+        # remove target, just to be sure
+        pdf_args.pop('target', None)
+        return pdf_args
+
+    def __prepare_html_args(self):
+        html_args = self.html_args.copy()
+        # just to be sure remove all references to url, file_obj, string and filename
+        for key in ['filename', 'url', 'file_obj', 'string']:
+            html_args.pop(key, None)
+        # find which one is set, must be exactly one, we checked that in init
+        count = 0
+        if self.filename is not None:
+            html_args['filename'] = self.filename
+            count += 1
+        if self.url is not None:
+            html_args['url'] = self.url
+            count += 1
+        if self.file_obj is not None:
+            html_args['file_obj'] = self.file_obj
+            count += 1
+        if self.string is not None:
+            html_args['string'] = self.string
+            count += 1
+        # now check if exactly one is given
+        if count == 0:
+            raise ValueError('Either "filename", "url", "file_obj" or "string" must be given')
+        elif count > 1:
+            raise ValueError('Only one of "filename", "url", "file_obj" or "string" is allowed')
+        # set url fetcher
+        html_args['url_fetcher'] = self.fetch_url
+        return html_args
+
+    def render(self, filepath=None):
+        # create html args and weasyprint html
+        html_args = self.__prepare_html_args()
+        weasy_html = HTML(**html_args)
+        pdf_args = self.__prepare_pdf_args()
+        weasy_html.write_pdf(filepath, pdf_args)
 
     def fetch_url(self, url):
         """A WeasyPrint URL fetcher.
@@ -102,12 +199,12 @@ class WeasyRenderer(InvoiceRenderer):
             dict: A dict as defined in the URL fetcher docs of WeasyPrint (string or file_obj, mime_type etc.).
         """
         if self.url_fetcher is not None:
-            return self.url_fetcher(url)
+            return self.url_fetcher(url, **self.fetcher_args)
         elif url.startswith('file://'):
             if not self.allow_files:
                 raise ValueError('Access denied to local file "%s"' % str(url))
             else:
-                return default_url_fetcher(url)
+                return default_url_fetcher(url, **self.fetcher_args)
         elif url.startswith('resource:'):
             key = url[9:]
             if key not in self.resources:
@@ -117,6 +214,12 @@ class WeasyRenderer(InvoiceRenderer):
                 value = value(key)
             return value
         elif self.fallback_default:
-            return default_url_fetcher(url)
+            return default_url_fetcher(url, **self.fetcher_args)
         else:
             raise ValueError('Invalid url: "%s"' % url)
+
+t = '<h1>Hello World</h1>' \
+    'Hello you fool!'
+
+r = WeasyRenderer(string=t)
+r.render('test.pdf')
