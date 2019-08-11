@@ -234,7 +234,7 @@ class InvoiceRenderer(ABC):
         self.show_gross_sum = show_gross_sum
 
     @abstractmethod
-    def render(self, filepath=None):
+    def render(self, invoice, filepath=None, **kwargs):
         pass
 
 
