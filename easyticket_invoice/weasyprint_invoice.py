@@ -26,75 +26,97 @@ class WeasyRenderer(InvoiceRenderer):
     WeasyPrint on that string.
     Create a subclass to embed a template engine.
 
-    The render method must have an additional argument 'string' that is the string representation of the HTML input.
     It also has an URL fetcher (see https://weasyprint.readthedocs.io/en/latest/tutorial.html#url-fetchers).
     This way we can dynamically access resources from for example a database.
 
-    For this purpose we have a wrapper around the WeasyPrint url fetcher. We have factory method called
-    create_url_fetcher. Thus, create_url_fetcher returns a WeasyPrint URL fetcher itself and you can pass it as an
-    argument to render. Of course you can also create your own fetcher and just use it. Be careful though that you may
-    give access to internal files via URLs like file://, see
-    https://weasyprint.readthedocs.io/en/latest/tutorial.html#access-to-local-files
+    The fetcher is controlled by a dict resources.
+    The idea is to restrict access to only certain (local) resources. The default fetcher will fetch files, all
+    kinds of URLs etc. In general we want only access to predefined files or we want dynamic images based on a
+    request etc.
+    Thus the resources dictionary defines a set of local resources which can be accessed when rendering the pdf.
+    This can be for example a local CSS files, a logo image and so on.
+    These local resources can be included in the HTML in a tag like <img src="resource:my_company_logo.png">.
+    By default all local resources must start with "resource:". Then the mapping dict would contain an entry
+    for "my_company_logo.png" and return an entry for a URL fetcher (a dictionary as defined in the link above).
+    It is also possible that the dictionary contains no direct entries in the form of a dict but a callable
+    function taking exactly one argument (the name of the resource). For example we could map "my_company_logo.png"
+    to a function taking one argument (which in this case would be "my_company_logo.png") which finds the file in
+    some local directory and returns the dict as discuess in the URL fetcher documentation above.
 
-    The built-in fetchers provide some protection against that, but always take care on how and who can edit local
+    This fetcher also allows to disable local files (with path "file://") and can fallback to the WeasyPrint default
+    fetcher.
+    Local files can lead to security problems though if not handled correctly, thus they're disabled by default.
+    The default fetcher will fetch many different (external) URLs and is therefor not enabled by default.
+    Set allow_files to True if you want to have access to local files.
+    See https://weasyprint.readthedocs.io/en/latest/tutorial.html#access-to-local-files for more information.
+
+    Set fallback_default to True if you want to use the default fetcher if now entry was found in the resources
+    dict (this also means access to external URLs, so things not starting with "resource:").
+
+    The, in my opinion, must secure approach is to allow only resources of the type "resource:" and disallow
+    everything else.
+
+    The built-in fetcher provides some protection against that, but always take care on how and who can edit local
     resources or other personal information! Also you should never allow users to input html tags without escaping HTML
     (as Django does) to avoid HTML injections.
+
+    Please note: If allow_files is True the default fetcher will be used to fetch the content of this file.
+    That means in this case the default fetcher may be called even if fallback_default is False.
+    This should be the behavior we want, but it's possible that this leads to security risks.
+
+    But you don't have to use this default behavior and can just implement your own fetcher. In this case
+    the resources dict, allow_files and fallback_default will be ignored, just change the url_fetcher to a URL fetcher
+    method.
+
+    Attributes:
+        resources (dict): Maps strings (resource identifiers) to a dict as defined in the WeasyPrint URL fetcher
+            documentation or a callable taking one argument and returning such a dict.
+        allow_files (bool): If True local files can be accessed via "file://".
+        fallback_default (bool): Use the default URL fetcher for everything not starting with "resource:".
+        url_fetcher (function): A URL fetcher function as defined in the WeasyPrint docs, if it is not None this
+            will be used in fetch_url instead of the default behavior, thus all arguments discussed above will be
+            ignored.
     """
+
+    def __init__(self, resources=None, allow_files=False, fallback_default=False, url_fetcher=None):
+        if resources is None:
+            resources = dict()
+        self.resources = resources
+        self.allow_files = allow_files
+        self.fallback_default = fallback_default
+        self.url_fetcher = url_fetcher
+
     def render(self, filepath=None, **kwargs):
         pass
 
-    @staticmethod
-    def create_url_fetcher(mapping, allow_files=False, fallback_default=False, **kwargs):
-        """Returns a new WeasyPrint URL fetcher (https://weasyprint.readthedocs.io/en/latest/tutorial.html#url-fetchers).
+    def fetch_url(self, url):
+        """A WeasyPrint URL fetcher.
 
-        The idea is to restrict access to only certain (local) resources. The default fetcher will fetch files, all
-        kinds of URLs etc. In general we want only access to predefined files or we want dynamic images based on a
-        request etc.
-        Thus the mapping dictionary defines a set of local resources which can be accessed when rendering the pdf.
-        This can be for example local CSS files, a logo image and so on.
-        These local resources can be included in the HTML in a tag like <img src="resource:my_company_logo.png">.
-        By default all local resources must start with "resource:". Then the mapping dict would contain an entry
-        for "my_company_logo.png" and return an entry for a URL fetcher (a dictionary as defined in the link above).
-        It is also possible that the dictionary contains no direct entries in the form of a d cit but a callable
-        function taking exactly one argument (the name of the resource). For example we could map "my_company_logo.png"
-        to a function taking one argument (which in this case would be "my_company_logo.png") which finds the file in
-        some local directory.
-
-        This fetcher also allows to disable local files (with path "file://") and can fallback to the WeasyPrint default
-        fetcher.
-        Local files can lead to security problems though if not handled correctly, thus they're disabled by default.
-        The default fetcher will fetch many different (external) URLs and is therefor not enabled by default.
-
-        The, in my opinion, must secure approach is to allow only resources of the type "resource:" and disallow
-        everything else, which should be the case if you just use the mapping dict.
-
-        This method returns a URL fetcher, thus a method. This method can then be passed to the render method
-        as the keyword argument "url_fetcher".
+        See class documentation for how a resource is located.
+        It either uses the url_fetcher of the object (if provided) or otherwise the resources dict as discussed above.
 
         Args:
-            mapping: A mapping from resource names to either dicts as defined by the WeasyPrint URL fetcher or a
-                callable taking one argument that returns such a dict.
-            allow_files: Allow files from the system with the "file://" path, because this may lead to security problems
-                it is disabled by default.
-            fallback_default: Fallback to the default URL fetcher of WeasyPrint if entry is not found.
-            **kwargs:
+            url (str): The URL of the resource to fetch.
 
         Returns:
-
+            dict: A dict as defined in the URL fetcher docs of WeasyPrint (string or file_obj, mime_type etc.).
         """
-        def fetcher(url):
-            if not allow_files and url.startswith('file://'):
-                raise ValueError('Access denied to local file %s' % str(url))
-            elif url.startswith('resource:'):
-                key = url[9:]
-                if key not in mapping:
-                    raise ValueError('Resource "%s" not found' % key)
-                value = mapping[key]
-                if callable(value):
-                    value = value(key)
-                return value
-            # if we reached this part we fallback to the default
-            if fallback_default:
-                return default_url_fetcher(url, **kwargs)
+        if self.url_fetcher is not None:
+            return self.url_fetcher(url)
+        elif url.startswith('file://'):
+            if not self.allow_files:
+                raise ValueError('Access denied to local file "%s"' % str(url))
+            else:
+                return default_url_fetcher(url)
+        elif url.startswith('resource:'):
+            key = url[9:]
+            if key not in self.resources:
+                raise ValueError('Resource "%s" not found' % key)
+            value = self.resources[key]
+            if callable(value):
+                value = value(key)
+            return value
+        elif self.fallback_default:
+            return default_url_fetcher(url)
+        else:
             raise ValueError('Invalid url: "%s"' % url)
-        return fetcher
