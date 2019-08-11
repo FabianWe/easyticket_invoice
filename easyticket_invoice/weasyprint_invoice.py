@@ -103,6 +103,7 @@ class WeasyRenderer(InvoiceRenderer):
 
     def __init__(self, resources=None, allow_files=False, fallback_default=False, url_fetcher=None,
                  html_args=None, fetcher_args=None, pdf_args=None, **kwargs):
+        super().__init__()
         # check for filename, url, file_obj or string (exactly one must be in kwargs)
         count = 0
         self.filename = None
@@ -179,12 +180,12 @@ class WeasyRenderer(InvoiceRenderer):
         html_args['url_fetcher'] = self.fetch_url
         return html_args
 
-    def render(self, filepath=None):
+    def render(self, invoice, filepath=None):
         # create html args and weasyprint html
         html_args = self.__prepare_html_args()
         weasy_html = HTML(**html_args)
         pdf_args = self.__prepare_pdf_args()
-        weasy_html.write_pdf(filepath, pdf_args)
+        weasy_html.write_pdf(filepath, **pdf_args)
 
     def fetch_url(self, url):
         """A WeasyPrint URL fetcher.
@@ -217,9 +218,3 @@ class WeasyRenderer(InvoiceRenderer):
             return default_url_fetcher(url, **self.fetcher_args)
         else:
             raise ValueError('Invalid url: "%s"' % url)
-
-t = '<h1>Hello World</h1>' \
-    'Hello you fool!'
-
-r = WeasyRenderer(string=t)
-r.render('test.pdf')
