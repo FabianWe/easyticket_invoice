@@ -71,6 +71,8 @@ class WeasyRenderer(InvoiceRenderer):
     The constructor must contain exactly one of the following arguments as well: "filename" (str or pathlib.Path),
     filename to the HTML file. "url" (str) An absolute, fully qualified URL. "file_obj" (file object) Any object with a
     read method. "string" (str) A string of HTML source.
+    If none of this arguments is given the template text is set to the empty string and filename, url, file_obj or
+    string can be set later on, see set_url etc.
 
     Attributes:
         resources (dict): Maps strings (resource identifiers) to a dict as defined in the WeasyPrint URL fetcher
@@ -103,7 +105,6 @@ class WeasyRenderer(InvoiceRenderer):
 
     def __init__(self, resources=None, allow_files=False, fallback_default=False, url_fetcher=None,
                  html_args=None, fetcher_args=None, pdf_args=None, **kwargs):
-        super().__init__()
         # check for filename, url, file_obj or string (exactly one must be in kwargs)
         count = 0
         self.filename = None
@@ -124,9 +125,12 @@ class WeasyRenderer(InvoiceRenderer):
             count += 1
         # now check if exactly one is given
         if count == 0:
-            raise ValueError('Either "filename", "url", "file_obj" or "string" must be given')
+            # not an error: set string to the empty string, ca be set later
+            self.string = ''
         elif count > 1:
             raise ValueError('Only one of "filename", "url", "file_obj" or "string" is allowed')
+        # all additional arguments popped from dict, call super init method with rest
+        super().__init__(**kwargs)
         # store additional html args
         if html_args is None:
             html_args = dict()
@@ -145,6 +149,57 @@ class WeasyRenderer(InvoiceRenderer):
         self.allow_files = allow_files
         self.fallback_default = fallback_default
         self.url_fetcher = url_fetcher
+
+    def _clear_source(self):
+        """Clears all of filename, url, file_obj and string."""
+        self.filename = None
+        self.url = None
+        self.file_obj = None
+        self.string = None
+
+    def set_filename(self, filename):
+        """Sets the content to filename, see class attributes.
+
+        Sets the html source to filename, clears all other content-related attributes.
+
+        Args:
+            filename (str): The filename.
+        """
+        self._clear_source()
+        self.filename = filename
+
+    def set_url(self, url):
+        """Sets the content to the given url, see class attributes.
+
+        Sets the html source to url, clears all other content-related attributes.
+
+        Args:
+            url (str): The url.
+        """
+        self._clear_source()
+        self.url = url
+
+    def set_file_obj(self, file_obj):
+        """Sets the content to file_obj, see class attributes.
+
+        Sets the html source to file_obj, clears all other content-related attributes.
+
+        Args:
+            file_obj (file object): Any object with a read method.
+        """
+        self._clear_source()
+        self.file_obj = file_obj
+
+    def set_string(self, string):
+        """Sets the content to string, see class attributes.
+
+        Sets the html source to string, clears all other content-related attributes.
+
+        Args:
+            string (str): The HTML content.
+        """
+        self._clear_source()
+        self.string = string
 
     def __prepare_pdf_args(self, target):
         pdf_args = self.pdf_args.copy()
@@ -222,3 +277,8 @@ class WeasyRenderer(InvoiceRenderer):
             return default_url_fetcher(url, **self.fetcher_args)
         else:
             raise ValueError('Invalid url: "%s"' % url)
+
+#import sys
+
+#r = WeasyRenderer(filename=sys.argv[1])
+#r.render(None, 'test.pdf')

@@ -201,7 +201,7 @@ class Invoice(object):
             raise KeyError('Tax category "%s" is not registered in this invoice' % str(article.tax_category))
         self.articles[article.article_id].append(article)
 
-    def get_context(self):
+    def get_context_dict(self):
         ctx = {'articles': self.articles, 'tax_categories': self.tax_categories, 'issuer': self.issuer,
                'recipient': self.recipient, 'date': self.date, 'service_date': self.service_date,
                'payment_information': self.payment_information}
@@ -239,6 +239,24 @@ class InvoiceRenderer(ABC):
         self.show_gross = show_gross
         self.show_net_sum = show_net_sum
         self.show_gross_sum = show_gross_sum
+        self.taxes_from_single = taxes_from_single
+
+    def get_context_dict(self, invoice=None):
+        """Gets the default invoice information of the renderer as a dictionary.
+
+        Args:
+            invoice (Invoice): If given the Invoice.get_context_dict method is called and added to the context data.
+
+        Returns:
+            dict: The class attributes as a dictionary: string to value.
+        """
+        ctx = invoice.get_context_dict() if invoice is not None else dict()
+
+        d = {'show_single_articles': self.show_single_articles, 'show_net': self.show_net,
+             'show_gross': self.show_gross, self.show_net_sum: 'show_net_sum', 'show_gross_sum': self.show_gross_sum,
+             'taxes_from_single': self.taxes_from_single, 'invoice': invoice}
+        ctx.update(d)
+        return ctx
 
     @abstractmethod
     def render(self, invoice, filepath):
